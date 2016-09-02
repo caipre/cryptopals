@@ -1,5 +1,3 @@
-use std::iter::FromIterator;
-
 use itertools::Itertools;
 
 const BASE64: [char; 64] = [
@@ -50,20 +48,30 @@ impl ByteArray {
     }
 
     fn to_base64(&self) -> String {
-        String::from_iter(
-            self.0.iter()
-                .chunks_lazy(3).into_iter()
-                .map(|chunk| { chunk.fold(0u32, |buf, &elem| { buf << 8 | elem as u32 }) })
-                .fold(Vec::new(), |mut vec, chunk| {
-                    vec.extend(
-                        [18, 12, 6, 0u32]
-                            .iter()
-                            .map(|shift| { BASE64[((chunk >> shift) & 0x3f) as usize] })
-                    );
-                    vec
-                })
-                .into_iter()
-        )
+        let padding = match self.0.len() % 3 {
+            0 => vec![],
+            1 => vec![0, 0],
+            2 => vec![0],
+            _ => unreachable!(),
+        };
+
+        self.0.iter()
+            .chain(padding.iter())
+            .chunks_lazy(3).into_iter()
+            .map(|chunk| { chunk.fold(0u32, |buf, &elem| { buf << 8 | elem as u32 }) })
+            .fold(Vec::new(), |mut vec, chunk| {
+                vec.extend(
+                    [18u32, 12, 6, 0]
+                        .iter()
+                        .map(|shift| { BASE64[((chunk >> shift) & 0x3f) as usize] })
+                );
+                vec
+            })
+            .into_iter()
+            .rev().skip(padding.len()).rev()
+            .into_iter()
+            .chain(padding.iter().map(|_| '='))
+            .collect()
     }
 }
 
@@ -81,6 +89,13 @@ mod test {
     fn test_bytearray_to_base64() {
         assert_eq!(ByteArray(vec![0x49, 0x27, 0x6d, 0x20, 0x6b, 0x69]).to_base64(),
                    "SSdtIGtp");
+    }
+
+    #[test]
+    fn test_base64_padding() {
+        assert_eq!(ByteArray::from_hex("a").to_base64(), "Cg==");
+        assert_eq!(ByteArray::from_hex("a0").to_base64(), "oA==");
+        assert_eq!(ByteArray::from_hex("a0b").to_base64(), "oAs=");
     }
 
     #[test]
