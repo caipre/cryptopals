@@ -1,3 +1,7 @@
+use std::iter;
+use std::iter::FromIterator;
+
+use num::traits::*;
 use itertools::Itertools;
 
 const BASE64: [char; 64] = [
@@ -10,7 +14,7 @@ const BASE64: [char; 64] = [
 
 
 #[derive(Debug)]
-struct ByteArray(Vec<u8>);
+pub struct ByteArray(Vec<u8>);
 
 impl PartialEq for ByteArray {
     fn eq(&self, other: &ByteArray) -> bool {
@@ -26,54 +30,61 @@ impl PartialEq for ByteArray {
     }
 }
 
-impl ByteArray {
-    fn from_hex(s: &str) -> ByteArray {
-        ByteArray(
-            s.bytes()
-             .chunks_lazy(2).into_iter()
-                .map(|chunk| {
-                    chunk
-                        .map(|byte| {
-                            match byte as char {
-                                '0'...'9' => byte - '0' as u8,
-                                'A'...'F' => byte - 'A' as u8 + 10,
-                                'a'...'f' => byte - 'a' as u8 + 10,
-                                _         => unreachable!(),
-                            }})
-                        .enumerate()
-                        .fold(0, |buf, (idx, elem)| { buf << (idx * 4) | elem })
-                })
-                .collect()
-        )
+impl IntoIterator for ByteArray {
+    type Item = u8;
+    type IntoIter = ::std::vec::IntoIter<u8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 
-    fn to_base64(&self) -> String {
-        let padding = match self.0.len() % 3 {
-            0 => vec![],
-            1 => vec![0, 0],
-            2 => vec![0],
-            _ => unreachable!(),
-        };
+}
 
-        self.0.iter()
-            .chain(padding.iter())
+impl FromIterator<u8> for ByteArray {
+    fn from_iter<I: IntoIterator<Item=u8>>(iter: I) -> ByteArray {
+        ByteArray(iter.into_iter().collect())
+    }
+}
+
+impl ByteArray {
+    pub fn from_hex(s: &str) -> ByteArray {
+        s.chars().map(|c| c.to_digit(16).unwrap() )
+            .chunks_lazy(2).into_iter()
+            .map(|bytepair| bytepair.bitfold::<u8>(4))
+            .collect()
+    }
+
+    pub fn to_base64(&self) -> String {
+        let padlen = (!self.0.len() % 3 + 3) % 3;
+
+        self.0.clone().into_iter()
+            .pad_using(self.0.len() + padlen, |_| 0 )
             .chunks_lazy(3).into_iter()
-            .map(|chunk| { chunk.fold(0u32, |buf, &elem| { buf << 8 | elem as u32 }) })
-            .fold(Vec::new(), |mut vec, chunk| {
-                vec.extend(
-                    [18u32, 12, 6, 0]
-                        .iter()
-                        .map(|shift| { BASE64[((chunk >> shift) & 0x3f) as usize] })
-                );
-                vec
+            .map(|triple| triple.bitfold::<u32>(8) )
+            .flat_map(|triple| {
+                vec![18u32, 12, 6, 0].into_iter()
+                    .map(move|shift| BASE64[((triple >> shift) & 0x3f) as usize])
             })
+            .collect_vec()
             .into_iter()
-            .rev().skip(padding.len()).rev()
-            .into_iter()
-            .chain(padding.iter().map(|_| '='))
+            .dropping_back(padlen)
+            .chain(iter::repeat('=').take(padlen))
             .collect()
     }
 }
+
+trait BitFold: Iterator {
+    fn bitfold<T>(self, shift: usize) -> T
+        where Self: Sized,
+              Self::Item: ToPrimitive,
+              T: Zero + PrimInt
+    {
+        self.fold(T::zero(), |buf, bits| { buf << shift | T::from(bits).unwrap() })
+    }
+}
+
+// Iterator<Item=PrimInt>
+impl<T: ?Sized> BitFold for T where T: Iterator {}
 
 #[cfg(test)]
 mod test {
