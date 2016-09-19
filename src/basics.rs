@@ -1,5 +1,6 @@
 use std::iter;
 use std::iter::FromIterator;
+use std::ops::BitXor;
 
 use num::traits::*;
 use itertools::Itertools;
@@ -54,6 +55,15 @@ impl ByteArray {
             .collect()
     }
 
+    pub fn to_hex(&self) -> String {
+        self.0.clone().into_iter()
+            .flat_map(|byte| {
+                vec![4, 0].into_iter()
+                    .map(move|shift| format!("{:x}", ((byte >> shift) & 0xf)))
+            })
+            .collect()
+    }
+
     pub fn to_base64(&self) -> String {
         let padlen = (!self.0.len() % 3 + 3) % 3;
 
@@ -69,6 +79,16 @@ impl ByteArray {
             .into_iter()
             .dropping_back(padlen)
             .chain(iter::repeat('=').take(padlen))
+            .collect()
+    }
+}
+
+impl BitXor for ByteArray {
+    type Output = ByteArray;
+
+    fn bitxor(self, rhs: ByteArray) -> ByteArray {
+        self.0.into_iter().zip(rhs.0.into_iter())
+            .map(|(lbyte, rbyte)| lbyte ^ rbyte)
             .collect()
     }
 }
@@ -113,5 +133,12 @@ mod test {
     fn test_hex_to_base64() {
         let string = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
         assert_eq!(ByteArray::from_hex(string).to_base64(), "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t");
+    }
+
+    #[test]
+    fn test_bytearray_bitxor() {
+        let a = ByteArray::from_hex("1c0111001f010100061a024b53535009181c");
+        let b = ByteArray::from_hex("686974207468652062756c6c277320657965");
+        assert_eq!((a ^ b).to_hex(), "746865206b696420646f6e277420706c6179")
     }
 }
