@@ -14,8 +14,8 @@ const BASE64: [char; 64] = [
 ];
 
 
-#[derive(Debug)]
-pub struct ByteArray(Vec<u8>);
+#[derive(Debug, Clone)]
+pub struct ByteArray(pub Vec<u8>);
 
 impl PartialEq for ByteArray {
     fn eq(&self, other: &ByteArray) -> bool {
@@ -38,7 +38,6 @@ impl IntoIterator for ByteArray {
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
-
 }
 
 impl FromIterator<u8> for ByteArray {
@@ -48,6 +47,14 @@ impl FromIterator<u8> for ByteArray {
 }
 
 impl ByteArray {
+    pub fn new() -> ByteArray {
+        ByteArray(vec![0])
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn from_hex(s: &str) -> ByteArray {
         s.chars().map(|c| c.to_digit(16).unwrap() )
             .chunks_lazy(2).into_iter()
@@ -79,6 +86,12 @@ impl ByteArray {
             .into_iter()
             .dropping_back(padlen)
             .chain(iter::repeat('=').take(padlen))
+            .collect()
+    }
+
+    pub fn to_ascii(&self) -> String {
+        self.0.clone().into_iter()
+            .map(|byte| format!("{}", byte as char))
             .collect()
     }
 }
