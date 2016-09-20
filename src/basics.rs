@@ -119,9 +119,31 @@ trait BitFold: Iterator {
 // Iterator<Item=PrimInt>
 impl<T: ?Sized> BitFold for T where T: Iterator {}
 
+pub struct Encrypt<'a>(&'a str);
+pub enum EncryptionScheme<'a> {
+    RepeatingKeyXor(&'a str),
+}
+
+pub fn encrypt(message: &str) -> Encrypt {
+    Encrypt(message)
+}
+
+impl<'a> Encrypt<'a> {
+    pub fn with(&self, scheme: EncryptionScheme) -> ByteArray {
+        let bytearray = ByteArray(self.0.clone().bytes().collect_vec());
+        match scheme {
+              EncryptionScheme::RepeatingKeyXor(key) => {
+                bytearray.into_iter().zip(key.bytes().cycle())
+                    .map(|(byte, keybyte)| byte ^ keybyte)
+                    .collect()
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::ByteArray;
+    use super::*;
 
     #[test]
     fn test_bytearray_from_hex() {
@@ -153,5 +175,15 @@ mod test {
         let a = ByteArray::from_hex("1c0111001f010100061a024b53535009181c");
         let b = ByteArray::from_hex("686974207468652062756c6c277320657965");
         assert_eq!((a ^ b).to_hex(), "746865206b696420646f6e277420706c6179")
+    }
+
+    #[test]
+    fn test_bytearray_repeating_key_xor() {
+        let message = "Burning 'em, if you ain't quick and nimble\n\
+                       I go crazy when I hear a cymbal";
+        let cipher = encrypt(message).with(EncryptionScheme::RepeatingKeyXor("ICE"));
+        assert_eq!(cipher.to_hex(),
+                   "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272\
+                    a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
     }
 }
